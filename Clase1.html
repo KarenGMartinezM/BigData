@@ -1,75 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <!-- Configuración básica del documento -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hand Detection with Vector Operations</title>
+  <!-- Datos del autor del código -->
   <!-- Karen Geraldine Martínez Moreno
        cod: 20221195001 -->
 
-  <!-- Importa las bibliotecas de MediaPipe y utilidades de dibujo -->
+  <!-- Importación de librerías para dibujo y detección de manos -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
-  <!-- CSS minimalista para centrar el video y el lienzo -->
+  <!-- Estilos para centrar el video y el canvas en la pantalla -->
   <style>
     body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    video, canvas { position: absolute; transform: rotateY(180deg); } /* Espeja el video y el lienzo */
+    video, canvas { position: absolute; transform: rotateY(180deg); } /* Espejar el video y el canvas */
   </style>
 </head>
 <body>
 
-  <!-- Elementos de video y lienzo para detección en tiempo real -->
-  <video id="webcam" autoplay playsinline></video>
-  <canvas id="output_canvas"></canvas>
+  <!-- Elementos para mostrar el video en tiempo real y dibujar las detecciones -->
+  <!--<video id="videoElement" autoplay playsinline>
+    <source src="mano_bien_4.mp4" type="video/mp4">
+    Your browser does not support the video tag.
+  </video>-->
+  <video id="webcam" autoplay playsinline></video> <!-- Video desde la webcam -->
+  <canvas id="output_canvas"></canvas> <!-- Canvas para dibujar los resultados -->
 
-  <!-- JavaScript principal para la detección de puntos clave de las manos -->
+  <!-- Script principal para detección de manos y operaciones vectoriales -->
   <script type="module">
-    // Biblioteca para operaciones con vectores
+    // Definición de operaciones vectoriales
     const Vector = {
-      // Suma de dos vectores
       suma: function(v1, v2) {
         if (v1.length !== v2.length) {
           throw new Error("Los vectores deben tener la misma dimensión.");
         }
         return v1.map((value, index) => value + v2[index]);
       },
-      // Multiplica un vector por un escalar
       escalarPorVector: function(scalar, vector) {
         return vector.map(value => value * scalar);
       },
-      // Producto punto entre dos vectores
       productoPunto: function(v1, v2) {
         if (v1.length !== v2.length) {
           throw new Error("Los vectores deben tener la misma dimensión.");
         }
         return v1.reduce((sum, value, index) => sum + value * v2[index], 0);
       },
-      // Calcula la magnitud de un vector
       magnitud: function(vector) {
         return Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
       },
-      // Calcula el coseno del ángulo entre dos vectores
       cosenoEntreVectores: function(v1, v2) {
         const productoPunto = this.productoPunto(v1, v2);
         const magnitudV1 = this.magnitud(v1);
         const magnitudV2 = this.magnitud(v2);
         return productoPunto / (magnitudV1 * magnitudV2);
       },
-      // Calcula la distancia entre dos vectores
       distancia: function(v1, v2) {
         return Math.sqrt(v1.reduce((sum, value, index) => sum + Math.pow(value - v2[index], 2), 0));
       }
     };
 
-    // Importa MediaPipe HandLandmarker
+    // Importación de la clase para detección de manos y el resolutor de modelos
     import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
-    let handLandmarker;          // Instancia de detección de manos
-    let runningMode = "VIDEO";    // Modo de ejecución: video en tiempo real
-    let lastVideoTime = -1;       // Rastrea el tiempo del último frame procesado
+    let handLandmarker;          // Instancia para detectar puntos clave de la mano
+    let runningMode = "VIDEO";    // Modo de funcionamiento en tiempo real con video
+    let lastVideoTime = -1;       // Variable para controlar el tiempo de los frames de video
 
-    // Inicializa el detector de puntos clave de manos
+    // Función para inicializar el detector de manos
     const initializeHandLandmarker = async () => {
       const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
       handLandmarker = await HandLandmarker.createFromOptions(vision, {
@@ -78,77 +78,73 @@
           delegate: "GPU"
         },
         runningMode: runningMode,
-        numHands: 2
+        numHands: 2  // Detección de hasta dos manos
       });
     };
-    initializeHandLandmarker(); // Llama a la función para inicializar el detector
+    initializeHandLandmarker(); // Llamada para inicializar el detector
 
-    const video = document.getElementById("webcam");           // Elemento de video de la cámara
-    const canvas = document.getElementById("output_canvas");   // Lienzo para dibujar puntos clave
+    const video = document.getElementById("webcam");           // Elemento de video de la webcam
+    const canvas = document.getElementById("output_canvas");   // Canvas para dibujar las detecciones
     const canvasCtx = canvas.getContext("2d");
 
-    // Solicita acceso a la cámara web del usuario
+    // Acceso a la cámara del dispositivo
     if (navigator.mediaDevices?.getUserMedia) {
       navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
-        video.srcObject = stream; // Configura el video para usar la cámara
-        video.addEventListener("loadeddata", predictVideo); // Detecta puntos clave al cargar el video
+        video.srcObject = stream;
+        video.addEventListener("loadeddata", predictVideo); // Llama la detección cuando el video está listo
       });
     }
 
-    // Calcula vectores entre puntos clave de las falanges
+    // Función para calcular vectores entre puntos clave de los dedos
     function calcularVectoresFalanges(landmarks) {
-      // Cálculo de vectores entre articulaciones del índice, corazón, anular y meñique
       const indice = Vector.suma([landmarks[8].x, landmarks[8].y, landmarks[8].z], Vector.escalarPorVector(-1, [landmarks[7].x, landmarks[7].y, landmarks[7].z]));
       const corazon = Vector.suma([landmarks[12].x, landmarks[12].y, landmarks[12].z], Vector.escalarPorVector(-1, [landmarks[11].x, landmarks[11].y, landmarks[11].z]));
       const anular = Vector.suma([landmarks[16].x, landmarks[16].y, landmarks[16].z], Vector.escalarPorVector(-1, [landmarks[15].x, landmarks[15].y, landmarks[15].z]));
       const menique = Vector.suma([landmarks[20].x, landmarks[20].y, landmarks[20].z], Vector.escalarPorVector(-1, [landmarks[19].x, landmarks[19].y, landmarks[19].z]));
-      
-      // Calcula el coseno de los ángulos entre los vectores del índice y los otros dedos
+
+      // Cálculo de cosenos entre los vectores de los dedos
       const cos_ind_cora = Vector.cosenoEntreVectores(indice, corazon);
       const cos_ind_anular = Vector.cosenoEntreVectores(indice, anular);
       const cos_ind_men = Vector.cosenoEntreVectores(indice, menique);
 
-      // Suma de los cosenos calculados
       const suma_fal = cos_ind_cora + cos_ind_anular + cos_ind_men;
 
-      // Valida si la suma de los cosenos indica una condición específica
-      const validacion = suma_fal < -2.7;
+      const validacion = suma_fal < -2.7; // Validación de posición de los dedos
 
-      console.log("Validacion:", validacion); // Imprime el resultado de la validación
+      console.log("Validacion:", validacion);
 
       return { validacion };
     }
 
-    // Detecta puntos clave en cada frame del video
+    // Función principal de predicción y dibujo en cada frame del video
     async function predictVideo() {
       if (handLandmarker && video.currentTime !== lastVideoTime) {
         lastVideoTime = video.currentTime;
 
-        // Configura las dimensiones del lienzo para que coincidan con el video
+        // Ajusta el tamaño del canvas al video
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
-        // Detecta puntos clave de manos en el frame actual
+        // Detección de puntos clave de la mano
         const results = await handLandmarker.detectForVideo(video, performance.now());
 
-        // Limpia los dibujos previos del lienzo
+        // Limpia el canvas antes de dibujar
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Dibuja los puntos clave detectados y sus conexiones
+        // Dibuja los puntos clave y las conexiones
         if (results.landmarks) {
           for (const landmarks of results.landmarks) {
             const falanges = calcularVectoresFalanges(landmarks);
 
-            // Dibuja un círculo amarillo si la validación es verdadera
-            if (falanges.validacion) {
-              const indexFingerTip = landmarks[8]; // Punta del dedo índice
+            if (falanges.validacion) {  // Dibuja un círculo si la validación es verdadera
+              const indexFingerTip = landmarks[8];  // Punta del dedo índice
               if (indexFingerTip) {
                 const x = indexFingerTip.x * canvas.width;
                 const y = indexFingerTip.y * canvas.height;
 
                 // Dibuja un círculo amarillo en la punta del dedo índice
                 canvasCtx.beginPath();
-                canvasCtx.arc(x, y, 10, 0, 2 * Math.PI); // Radio del círculo = 10px
+                canvasCtx.arc(x, y, 10, 0, 2 * Math.PI);  // Radio del círculo = 10px
                 canvasCtx.fillStyle = "yellow";
                 canvasCtx.fill();
                 canvasCtx.stroke();
@@ -157,8 +153,7 @@
           }
         }
       }
-      // Continúa detectando en el siguiente frame
-      requestAnimationFrame(predictVideo);
+      requestAnimationFrame(predictVideo); // Continúa la detección en el siguiente frame
     }
   </script>
 </body>
